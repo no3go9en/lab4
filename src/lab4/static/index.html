@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Музичні інструменти · ЛР4</title>
+<style>
+  :root {
+    --bg: #f6f4ef; --card: #fff; --ink: #1f1d1a; --muted: #6b665e; --line: #e4dfd5;
+    --accent: #b5532a; --accent-2: #2f5d62; --bad: #b3261e; --ok: #2e7d32;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--ink); }
+  header { padding: 22px 32px 0; }
+  h1 { margin: 0; font: 600 26px Georgia, "Times New Roman", serif; letter-spacing: .2px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); margin: 4px 0 18px; }
+  nav { display: flex; gap: 4px; padding: 0 32px; border-bottom: 1px solid var(--line); }
+  nav button { border: 0; background: none; padding: 10px 16px; font: inherit; color: var(--muted);
+    cursor: pointer; border-bottom: 3px solid transparent; }
+  nav button.active { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+  main { display: grid; grid-template-columns: 1fr 340px; gap: 24px; padding: 24px 32px; align-items: start; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+  .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .toolbar .count { color: var(--muted); margin-left: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 600; }
+  tr:hover td { background: #faf8f3; }
+  tr.selected td { background: #fbeee6; }
+  td.nowrap { white-space: nowrap; }
+  td.actions { white-space: nowrap; text-align: right; }
+  .btn { border: 1px solid var(--line); background: #fff; border-radius: 6px; padding: 6px 12px;
+    font: inherit; cursor: pointer; }
+  .btn:hover { border-color: var(--muted); }
+  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn.danger { color: var(--bad); }
+  .btn.small { padding: 3px 9px; font-size: 13px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  input, select { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; font: inherit; background: #fff; }
+  input.invalid { border-color: var(--bad); }
+  .err { color: var(--bad); font-size: 12px; min-height: 0; margin-top: 3px; }
+  .form-actions { display: flex; gap: 8px; margin-top: 16px; }
+  h2 { margin: 0 0 4px; font: 600 18px Georgia, serif; }
+  .hint { color: var(--muted); font-size: 13px; margin: 0 0 6px; }
+  #toast { position: fixed; right: 24px; bottom: 24px; padding: 10px 16px; border-radius: 8px; color: #fff;
+    opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 420px; }
+  #toast.show { opacity: 1; }
+  .links { margin-top: 18px; border-top: 1px dashed var(--line); padding-top: 14px; }
+  .chip { display: inline-flex; gap: 6px; align-items: center; background: #eef3f3; color: var(--accent-2);
+    border-radius: 14px; padding: 3px 4px 3px 10px; margin: 0 6px 6px 0; font-size: 13px; }
+  .chip button { border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 14px; }
+  .pager { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; align-items: center; color: var(--muted); }
+  footer { padding: 0 32px 24px; color: var(--muted); font-size: 13px; }
+  a { color: var(--accent-2); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Музичні <span>інструменти</span></h1>
+</header>
+<nav id="tabs"></nav>
+<main>
+  <section class="card">
+    <div class="toolbar" id="toolbar"></div>
+    <table><thead id="thead"></thead><tbody id="tbody"></tbody></table>
+    <div class="pager">
+      <button class="btn small" id="prev">← Назад</button>
+      <span id="page"></span>
+      <button class="btn small" id="next">Далі →</button>
+    </div>
+  </section>
+  <aside class="card">
+    <h2 id="form-title"></h2>
+    <p class="hint" id="form-hint"></p>
+    <form id="form" novalidate></form>
+    <div id="links" class="links" hidden></div>
+  </aside>
+</main>
+<footer>API: <a href="/docs">/docs</a> (Swagger UI)</footer>
+<div id="toast"></div>
+
+<script>
+const API = "/api";
+const PAGE = 15;
+
+// Опис ресурсів. pattern — ті самі регулярні вирази, що й у domain.py (перевірка ще до запиту).
+const RESOURCES = {
+  instruments: {
+    title: "Інструменти", one: "інструмент",
+    columns: ["id", "serial_number", "name", "category_id", "manufacturer_id", "price", "year_made"],
+    fields: [
+      { name: "serial_number", label: "Серійний номер", pattern: "^[A-Za-z]{2,4}-\\d{4,8}$", hint: "напр. YMH-102938" },
+      { name: "name", label: "Назва", pattern: "^.{2,120}$" },
+      { name: "category_id", label: "Категорія", ref: "categories" },
+      { name: "manufacturer_id", label: "Виробник", ref: "manufacturers" },
+      { name: "price", label: "Ціна, $", type: "number", step: "0.01", min: 0 },
+      { name: "year_made", label: "Рік виготовлення", type: "number", min: 1600, max: 2100 },
+    ],
+    filters: ["category_id", "manufacturer_id"],
+  },
+  musicians: {
+    title: "Музиканти", one: "музикант",
+    columns: ["id", "full_name", "email", "phone"],
+    fields: [
+      { name: "full_name", label: "ПІБ", pattern: "^.{2,120}$" },
+      { name: "email", label: "Email", pattern: "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$" },
+      { name: "phone", label: "Телефон", pattern: "^\\+380\\d{9}$", hint: "+380XXXXXXXXX" },
+    ],
+  },
+  manufacturers: {
+    title: "Виробники", one: "виробник",
+    columns: ["id", "name", "country", "email", "website"],
+    fields: [
+      { name: "name", label: "Назва", pattern: "^.{2,120}$" },
+      { name: "country", label: "Країна", pattern: "^.{2,120}$" },
+      { name: "email", label: "Email", pattern: "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$" },
+      { name: "website", label: "Сайт", optional: true, pattern: "^https?://[\\w.-]+\\.[a-z]{2,}(/\\S*)?$" },
+    ],
+  },
+  categories: {
+    title: "Категорії", one: "категорія",
+    columns: ["id", "name", "description"],
+    fields: [
+      { name: "name", label: "Назва", pattern: "^.{2,50}$" },
+      { name: "description", label: "Опис", optional: true },
+    ],
+  },
+};
+const HEAD = { id: "ID", serial_number: "Серійний №", name: "Назва", category_id: "Категорія",
+  manufacturer_id: "Виробник", price: "Ціна", year_made: "Рік", full_name: "ПІБ", email: "Email",
+  phone: "Телефон", country: "Країна", website: "Сайт", description: "Опис" };
+
+let current = "instruments", offset = 0, editing = null, rows = [];
+const refs = { categories: [], manufacturers: [] };
+const filters = {};
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+function toast(msg, ok = true) {
+  const t = $("toast");
+  t.textContent = msg; t.style.background = ok ? "var(--ok)" : "var(--bad)";
+  t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 3200);
+}
+
+async function api(method, path, body) {
+  const res = await fetch(API + path, {
+    method, headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 204) return null;
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const err = new Error(typeof data?.detail === "string" ? data.detail : `HTTP ${res.status}`);
+    err.status = res.status; err.fields = Array.isArray(data?.detail) ? data.detail : [];
+    throw err;
+  }
+  return data;
+}
+
+async function loadRefs() {
+  [refs.categories, refs.manufacturers] = await Promise.all([
+    api("GET", "/categories?limit=200"), api("GET", "/manufacturers?limit=200"),
+  ]);
+}
+const refName = (res, id) => refs[res].find((r) => r.id === id)?.name ?? id;
+
+function renderTabs() {
+  $("tabs").innerHTML = Object.entries(RESOURCES).map(([k, r]) =>
+    `<button data-k="${k}" class="${k === current ? "active" : ""}">${r.title}</button>`).join("");
+  $("tabs").querySelectorAll("button").forEach((b) => b.onclick = () => {
+    current = b.dataset.k; offset = 0; editing = null; renderTabs(); renderForm(); load();
+  });
+}
+
+function renderToolbar() {
+  const r = RESOURCES[current];
+  const sel = (r.filters || []).map((f) => {
+    const ref = f === "category_id" ? "categories" : "manufacturers";
+    const opts = refs[ref].map((o) => `<option value="${o.id}" ${filters[f] == o.id ? "selected" : ""}>${esc(o.name)}</option>`).join("");
+    return `<select data-f="${f}" style="width:auto"><option value="">${HEAD[f]}: усі</option>${opts}</select>`;
+  }).join("");
+  $("toolbar").innerHTML = `${sel}<span class="count" id="count"></span>`;
+  $("toolbar").querySelectorAll("select").forEach((s) => s.onchange = () => {
+    filters[s.dataset.f] = s.value || undefined; offset = 0; load();
+  });
+}
+
+async function load() {
+  const r = RESOURCES[current];
+  renderToolbar();
+  const q = new URLSearchParams({ limit: PAGE, offset });
+  (r.filters || []).forEach((f) => filters[f] && q.set(f, filters[f]));
+  try { rows = await api("GET", `/${current}?${q}`); } catch (e) { toast(e.message, false); rows = []; }
+  $("thead").innerHTML = `<tr>${r.columns.map((c) => `<th>${HEAD[c]}</th>`).join("")}<th></th></tr>`;
+  $("tbody").innerHTML = rows.map((row) => `<tr data-id="${row.id}" class="${editing === row.id ? "selected" : ""}">
+    ${r.columns.map((c) => `<td class="${c === "serial_number" || c === "price" ? "nowrap" : ""}">${esc(cell(c, row[c]))}</td>`).join("")}
+    <td class="actions"><button class="btn small" data-act="edit">Редагувати</button>
+    <button class="btn small danger" data-act="del">Видалити</button></td></tr>`).join("")
+    || `<tr><td colspan="${r.columns.length + 1}" style="color:var(--muted)">Немає записів</td></tr>`;
+  $("tbody").querySelectorAll("button").forEach((b) => b.onclick = () => {
+    const id = Number(b.closest("tr").dataset.id);
+    b.dataset.act === "edit" ? startEdit(id) : remove(id);
+  });
+  $("count").textContent = `записи ${rows.length ? offset + 1 : 0}–${offset + rows.length}`;
+  $("page").textContent = `стор. ${offset / PAGE + 1}`;
+  $("prev").disabled = offset === 0;
+  $("next").disabled = rows.length < PAGE;
+}
+function cell(col, v) {
+  if (col === "category_id") return refName("categories", v);
+  if (col === "manufacturer_id") return refName("manufacturers", v);
+  if (col === "price") return `$${Number(v).toLocaleString("uk-UA", { minimumFractionDigits: 2 })}`;
+  return v;
+}
+
+function renderForm(data = {}) {
+  const r = RESOURCES[current];
+  $("form-title").textContent = editing ? `Редагувати #${editing}` : `Новий ${r.one}`;
+  $("form-hint").textContent = editing ? "PUT /api/" + current + "/" + editing : "POST /api/" + current;
+  $("form").innerHTML = r.fields.map((f) => {
+    const v = esc(data[f.name] ?? "");
+    const input = f.ref
+      ? `<select name="${f.name}">${refs[f.ref].map((o) => `<option value="${o.id}" ${data[f.name] === o.id ? "selected" : ""}>${esc(o.name)}</option>`).join("")}</select>`
+      : `<input name="${f.name}" value="${v}" type="${f.type || "text"}" ${f.step ? `step="${f.step}"` : ""}
+          ${f.min !== undefined ? `min="${f.min}"` : ""} ${f.max ? `max="${f.max}"` : ""} placeholder="${esc(f.hint || "")}">`;
+    return `<label>${f.label}${f.optional ? " (необов'язково)" : ""}</label>${input}<div class="err" data-err="${f.name}"></div>`;
+  }).join("") + `<div class="form-actions"><button class="btn primary" type="submit">${editing ? "Зберегти" : "Додати"}</button>
+    ${editing ? `<button class="btn" type="button" id="cancel">Скасувати</button>` : ""}</div>`;
+  $("form").onsubmit = submit;
+  if (editing) $("cancel").onclick = () => { editing = null; renderForm(); load(); };
+  renderLinks();
+}
+
+function collect() {
+  const r = RESOURCES[current], body = {};
+  let ok = true;
+  for (const f of r.fields) {
+    const el = $("form").elements[f.name], err = $("form").querySelector(`[data-err="${f.name}"]`);
+    let v = el.value.trim();
+    if (f.name === "phone") v = v.replace(/\s/g, "");
+    let msg = "";
+    if (!v && !f.optional) msg = "Обов'язкове поле";
+    else if (v && f.pattern && !new RegExp(f.pattern).test(v)) msg = "Невірний формат" + (f.hint ? ` (${f.hint})` : "");
+    err.textContent = msg; el.classList.toggle("invalid", !!msg); ok &&= !msg;
+    body[f.name] = !v ? null : (f.type === "number" || f.ref) ? Number(v) : v;
+  }
+  return ok ? body : null;
+}
+
+async function submit(e) {
+  e.preventDefault();
+  const body = collect();
+  if (!body) return;
+  try {
+    const saved = editing ? await api("PUT", `/${current}/${editing}`, body) : await api("POST", `/${current}`, body);
+    toast(editing ? `Запис #${saved.id} оновлено` : `Створено запис #${saved.id}`);
+    editing = null;
+    if (current === "categories" || current === "manufacturers") await loadRefs();
+    renderForm(); load();
+  } catch (err) {
+    for (const f of err.fields) {          // помилки валідації з сервера (422)
+      const name = f.loc?.at(-1), box = $("form").querySelector(`[data-err="${name}"]`);
+      if (box) { box.textContent = f.msg.replace("Value error, ", ""); $("form").elements[name]?.classList.add("invalid"); }
+    }
+    toast(err.fields.length ? "Сервер відхилив дані (422)" : err.message, false);
+  }
+}
+
+async function startEdit(id) {
+  try { editing = id; renderForm(await api("GET", `/${current}/${id}`)); load(); }
+  catch (e) { toast(e.message, false); }
+}
+
+async function remove(id) {
+  if (!window.confirm(`Видалити запис #${id}?`)) return;
+  try {
+    await api("DELETE", `/${current}/${id}`);
+    toast(`Запис #${id} видалено`);
+    if (editing === id) { editing = null; renderForm(); }
+    if (current === "categories" || current === "manufacturers") await loadRefs();
+    load();
+  } catch (e) { toast(e.message, false); }
+}
+
+// N:M — інструменти музиканта
+async function renderLinks() {
+  const box = $("links");
+  if (current !== "musicians" || !editing) { box.hidden = true; return; }
+  box.hidden = false;
+  const mine = await api("GET", `/musicians/${editing}/instruments`);
+  const all = await api("GET", "/instruments?limit=200");
+  const free = all.filter((i) => !mine.some((m) => m.id === i.id));
+  box.innerHTML = `<h2>Інструменти музиканта</h2><p class="hint">Зв'язок N:M</p>
+    <div>${mine.map((i) => `<span class="chip">${esc(i.name)}${i.since_year ? ` · з ${i.since_year}` : ""}
+      <button title="Відв'язати" data-id="${i.id}">✕</button></span>`).join("") || '<span class="hint">поки немає</span>'}</div>
+    <label>Додати інструмент</label>
+    <div style="display:flex;gap:6px"><select id="link-sel">${free.map((i) => `<option value="${i.id}">${esc(i.name)} (${esc(i.serial_number)})</option>`).join("")}</select>
+    <input id="link-year" type="number" placeholder="рік" style="width:80px" min="1900" max="2100">
+    <button class="btn" id="link-add" type="button">+</button></div>`;
+  box.querySelectorAll(".chip button").forEach((b) => b.onclick = async () => {
+    await api("DELETE", `/musicians/${editing}/instruments/${b.dataset.id}`); toast("Зв'язок видалено"); renderLinks();
+  });
+  $("link-add").onclick = async () => {
+    const year = $("link-year").value;
+    try {
+      await api("POST", `/musicians/${editing}/instruments/${$("link-sel").value}`, { since_year: year ? Number(year) : null });
+      toast("Інструмент прив'язано"); renderLinks();
+    } catch (e) { toast(e.message, false); }
+  };
+}
+
+$("prev").onclick = () => { offset = Math.max(0, offset - PAGE); load(); };
+$("next").onclick = () => { offset += PAGE; load(); };
+
+(async () => {
+  try { await loadRefs(); } catch (e) { toast("API недоступне: " + e.message, false); }
+  renderTabs(); renderForm(); load();
+})();
+</script>
+</body>
+</html>
